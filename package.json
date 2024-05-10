@@ -8,11 +8,11 @@
   "dependencies": {
     "elysia": "latest",
     "@elysiajs/cors": "^0.8.0",
-    "@types/mongoose-delete": "^1.0.4",
     "mongoose": "^8.0.4",
     "mongoose-delete": "^1.0.2"
   },
   "devDependencies": {
+    "@types/mongoose-delete": "^1.0.4",
     "bun-types": "latest"
   },
   "module": "src/index.js"

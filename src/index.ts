@@ -3,7 +3,9 @@ import { cors } from "@elysiajs/cors";
 
 import { mongooseConnection } from "./databases/mongodb.database";
 
-import SongModel from "./models/mongoose/song.model";
+import MuzikSongModel from "./models/mongoose/muzik-song.model";
+import LocalSongModel from "./models/mongoose/local-song.model";
+import FolderPathModel from "./models/mongoose/folder-path.model";
 
 try {
 	if (await mongooseConnection) {
@@ -15,7 +17,7 @@ try {
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			.get("/", () => "Hello Amir")
 			.get("/add-test-songs", () => {
-				SongModel.insertMany([
+				MuzikSongModel.insertMany([
 					{
 						type: "ALBUM",
 						parentalAdvisory: true,
@@ -184,7 +186,7 @@ try {
 			.get(
 				"/muziks/home/recentlyPlayed",
 				async () =>
-					await SongModel.find()
+					await MuzikSongModel.find()
 						.where("_id")
 						.in([
 							"6600fdf5e7fdafbe4ee7aab8",
@@ -200,7 +202,7 @@ try {
 			.get(
 				"/muziks/home/top-tracks",
 				async () =>
-					await SongModel.find()
+					await MuzikSongModel.find()
 						.where("_id")
 						.in([
 							"6600fdf5e7fdafbe4ee7aabf",
@@ -213,6 +215,7 @@ try {
 						])
 						.exec()
 			)
+			.get("/folder-paths", async () => await FolderPathModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
 			.get("/song/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`)
@@ -220,10 +223,33 @@ try {
 			.get("/video/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
-			.patch("/favorite", async ({ body }) => await SongModel.findByIdAndUpdate(body, { favorite: true }, { returnDocument: "after" }), {
+			.post("/folder-path", async ({ body }) => (await FolderPathModel.create({ path: body })).toJSON(), {
+				body: t.String(),
+				response: t.Object({
+					_id: t.ObjectString(),
+					path: t.String(),
+					deleted: t.Boolean(),
+					deletedAt: t.Optional(t.Date()),
+					deletedBy: t.Optional(t.String()),
+					__v: t.Number(),
+					createdAt: t.Date(),
+					updatedAt: t.Date(),
+				}),
+			})
+			.post(
+				"/song-paths",
+				async ({ body }) =>
+					await LocalSongModel.create(
+						body.map((songPath) => {
+							return { file: songPath };
+						})
+					),
+				{ body: t.Array(t.String()) }
+			)
+			.patch("/favorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
 				body: t.String(),
 			})
-			.patch("/unfavorite", async ({ body }) => await SongModel.findByIdAndUpdate(body, { favorite: false }, { returnDocument: "after" }), {
+			.patch("/unfavorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
 				body: t.String(),
 			})
 			.listen(3000);
