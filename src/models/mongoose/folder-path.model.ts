@@ -11,6 +11,6 @@ const folderPathSchema = new Schema(
 
 folderPathSchema.plugin(MongooseDelete, { deletedAt: true, deletedBy: true });
 
-const FolderPath = model("FolderPath", folderPathSchema);
+const FolderPath = model("Folder-Path", folderPathSchema);
 
 export default FolderPath;

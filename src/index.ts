@@ -4,7 +4,6 @@ import { cors } from "@elysiajs/cors";
 import { mongooseConnection } from "./databases/mongodb.database";
 
 import MuzikSongModel from "./models/mongoose/muzik-song.model";
-import LocalSongModel from "./models/mongoose/local-song.model";
 import FolderPathModel from "./models/mongoose/folder-path.model";
 
 try {
@@ -236,16 +235,16 @@ try {
 					updatedAt: t.Date(),
 				}),
 			})
-			.post(
-				"/song-paths",
-				async ({ body }) =>
-					await LocalSongModel.create(
-						body.map((songPath) => {
-							return { file: songPath };
-						})
-					),
-				{ body: t.Array(t.String()) }
-			)
+			.post("/local-song-paths", async ({ body }) => await MuzikSongModel.create(body), {
+				body: t.Array(
+					t.Object({
+						type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")]),
+						title: t.String(),
+						artist: t.String(),
+						file: t.String(),
+					})
+				),
+			})
 			.patch("/favorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
 				body: t.String(),
 			})
