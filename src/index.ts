@@ -215,6 +215,7 @@ try {
 						.exec()
 			)
 			.get("/folder-paths", async () => await FolderPathModel.find({}))
+			.get("/songs", async () => await MuzikSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
 			.get("/song/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`)
@@ -223,25 +224,32 @@ try {
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
 			.post(
-				"/local-song-paths",
-				async ({ body: { directory, songs } }) => {
-					const savedMuziks = await MuzikSongModel.create(songs);
-					const savedDirectory = (await FolderPathModel.create({ path: directory })).toJSON();
+				"/local-songs",
+				async ({ body }) => {
+					const savedMuziks = await MuzikSongModel.create(body);
 
-					if (savedMuziks && savedDirectory) return { savedMuziks, savedDirectory };
+					if (savedMuziks) return savedMuziks;
 				},
 				{
-					body: t.Object({
-						directory: t.String(),
-						songs: t.Array(
-							t.Object({
-								type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")]),
-								title: t.String(),
-								artist: t.String(),
-								file: t.String(),
-							})
-						),
-					}),
+					body: t.Array(
+						t.Object({
+							type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")]),
+							title: t.String(),
+							artist: t.String(),
+							file: t.String(),
+						})
+					),
+				}
+			)
+			.post(
+				"/local-directory",
+				async ({ body }) => {
+					const savedDirectory = (await FolderPathModel.create({ path: body })).toJSON();
+
+					if (savedDirectory) return savedDirectory;
+				},
+				{
+					body: t.String(),
 				}
 			)
 			.patch("/favorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
