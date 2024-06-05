@@ -182,38 +182,6 @@ try {
 				};
 			})
 			.get("/user-image", () => Bun.file("./server/content/image/amir-image.jpg"))
-			.get(
-				"/muziks/home/recentlyPlayed",
-				async () =>
-					await MuzikSongModel.find()
-						.where("_id")
-						.in([
-							"6600fdf5e7fdafbe4ee7aab8",
-							"6600fdf5e7fdafbe4ee7aab9",
-							"6600fdf5e7fdafbe4ee7aaba",
-							"6600fdf5e7fdafbe4ee7aabb",
-							"6600fdf5e7fdafbe4ee7aabc",
-							"6600fdf5e7fdafbe4ee7aabd",
-							"6600fdf5e7fdafbe4ee7aabe",
-						])
-						.exec()
-			)
-			.get(
-				"/muziks/home/top-tracks",
-				async () =>
-					await MuzikSongModel.find()
-						.where("_id")
-						.in([
-							"6600fdf5e7fdafbe4ee7aabf",
-							"6600fdf5e7fdafbe4ee7aac0",
-							"6600fdf5e7fdafbe4ee7aac1",
-							"6600fdf5e7fdafbe4ee7aac2",
-							"6600fdf5e7fdafbe4ee7aac3",
-							"6600fdf5e7fdafbe4ee7aac4",
-							"6600fdf5e7fdafbe4ee7aac5",
-						])
-						.exec()
-			)
 			.get("/folder-paths", async () => await FolderPathModel.find({}))
 			.get("/songs", async () => await MuzikSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
