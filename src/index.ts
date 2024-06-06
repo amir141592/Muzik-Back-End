@@ -238,10 +238,25 @@ try {
 			.get("/video/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
+			.get(
+				"/check-token",
+				async ({
+					jwt,
+					cookie: {
+						token: { value },
+					},
+				}) => {
+					const tokenData = await jwt.verify(value);
+
+					if (tokenData) return true;
+					else return false;
+				},
+				{ cookie: t.Object({ token: t.String() }) }
+			)
 			.post(
 				"/create-user",
 				async ({ body: { firstName, lastName, email, password } }) =>
-					UserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) }),
+					(await UserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
 				{
 					body: t.Object({
 						firstName: t.String(),
