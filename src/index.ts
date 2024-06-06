@@ -1,10 +1,12 @@
 import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { jwt } from "@elysiajs/jwt";
 
 import { mongooseConnection } from "./databases/mongodb.database";
 
 import MuzikSongModel from "./models/mongoose/muzik-song.model";
 import FolderPathModel from "./models/mongoose/folder-path.model";
+import UserModel from "./models/mongoose/user.model";
 
 try {
 	if (await mongooseConnection) {
@@ -12,6 +14,12 @@ try {
 
 		new Elysia()
 			.use(cors({ methods: "*" }))
+			.use(
+				jwt({
+					name: "jwt",
+					secret: "/:r=a%fGu#y(7y]tLzgtnnH$/qTZTC4fJ)RH#r:YBM=vQMakHc]Tmi;&baw@zz3F",
+				})
+			)
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			.get("/", () => "Hello Amir")
@@ -190,6 +198,50 @@ try {
 			)
 			.get("/video/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
+			)
+			// TODO add rate limiter
+			.post(
+				"/create-user",
+				async ({ body: { firstName, lastName, email, password } }) =>
+					UserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) }),
+				{
+					body: t.Object({
+						firstName: t.String(),
+						lastName: t.String(),
+						email: t.String(),
+						password: t.String(),
+					}),
+				}
+			)
+			// TODO add rate limiter
+			.post(
+				"/user-log-in",
+				async ({ body: { email, password }, jwt, cookie: { token } }) => {
+					const user = await UserModel.findOne({ email }).exec();
+
+					if (user) {
+						const correctPass = await Bun.password.verify(password, user.password);
+
+						if (correctPass) {
+							token.set({
+								value: jwt.sign({ id: user.id, email }),
+								httpOnly: true,
+								maxAge: 3600 * 24 * 7, // ? 7 days
+								priority: "high",
+							});
+
+							return {
+								user: { fullName: user.fullName, email: user.email, phoneNumber: user.phoneNumber, picture: user.picture },
+								success: true,
+							};
+						} else
+							return {
+								user: { fullName: user.fullName, email: user.email, phoneNumber: user.phoneNumber, picture: user.picture },
+								success: false,
+							};
+					} else if (!user) return { user: null, success: false };
+				},
+				{ body: t.Object({ email: t.String(), password: t.String() }) }
 			)
 			.post(
 				"/local-songs",
