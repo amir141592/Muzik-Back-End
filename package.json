@@ -9,9 +9,11 @@
     "@elysiajs/cors": "^0.8.0",
     "@elysiajs/jwt": "^1.0.2",
     "elysia": "latest",
+    "elysia-ip": "^1.0.7",
     "elysia-rate-limit": "^4.1.0",
     "mongoose": "^8.0.4",
-    "mongoose-delete": "^1.0.2"
+    "mongoose-delete": "^1.0.2",
+    "rate-limiter-flexible": "^5.0.3"
   },
   "devDependencies": {
     "@types/mongoose-delete": "^1.0.4",
