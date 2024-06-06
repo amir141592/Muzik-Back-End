@@ -6,8 +6,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "elysia": "latest",
     "@elysiajs/cors": "^0.8.0",
+    "@elysiajs/jwt": "^1.0.2",
+    "elysia": "latest",
     "mongoose": "^8.0.4",
     "mongoose-delete": "^1.0.2"
   },
