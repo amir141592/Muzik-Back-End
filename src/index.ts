@@ -255,6 +255,7 @@ try {
 
 						if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
 							set.status = "Too Many Requests";
+
 							return { limiterResultConsecutive, limiterResultDaily };
 						}
 					},
@@ -267,10 +268,11 @@ try {
 
 					if (user) {
 						const correctPass = await Bun.password.verify(password, user.password);
+						const { id, fullName, email, phoneNumber, picture } = user;
 
 						if (correctPass) {
 							token.set({
-								value: jwt.sign({ id: user.id, email }),
+								value: await jwt.sign({ id, email }),
 								httpOnly: true,
 								maxAge: 3600 * 24 * 7, // ? 7 days
 								priority: "high",
@@ -279,18 +281,16 @@ try {
 
 							return {
 								user: {
-									firstName: user.firstName,
-									lastName: user.lastName,
-									fullName: user.fullName,
-									email: user.email,
-									phoneNumber: user.phoneNumber,
-									picture: user.picture,
+									fullName,
+									email,
+									phoneNumber,
+									picture,
 								},
 								success: true,
 							};
 						} else
 							return {
-								user: { fullName: user.fullName, email: user.email, phoneNumber: user.phoneNumber, picture: user.picture },
+								user: { fullName, email, phoneNumber },
 								success: false,
 							};
 					} else if (!user) return { user: null, success: false };
