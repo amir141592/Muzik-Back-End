@@ -6,7 +6,7 @@ const userSchema = new Schema(
 		firstName: { type: Schema.Types.String, required: true },
 		lastName: { type: Schema.Types.String, required: true },
 		email: { type: Schema.Types.String, required: true, unique: true },
-		phoneNumber: { type: Schema.Types.String, required: false, unique: true },
+		phoneNumber: { type: Schema.Types.String, required: false },
 		password: { type: Schema.Types.String, required: true },
 		picture: { type: Schema.Types.String, required: false },
 		// parentalAdvisory: { type: Schema.Types.Boolean, default: false },
