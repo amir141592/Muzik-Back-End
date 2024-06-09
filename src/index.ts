@@ -11,12 +11,10 @@ import FolderPathModel from "./models/mongoose/folder-path.model";
 import UserModel from "./models/mongoose/user.model";
 
 try {
-	const { connection } = await mongooseConnection;
+	const { connection } = await mongooseConnection();
 
 	if (connection) {
 		console.info("connected to mongoDB");
-
-		const today = new Date();
 
 		const limiterConsecutiveCreateUser = new RateLimiterMongo({
 			storeClient: connection,
@@ -29,8 +27,8 @@ try {
 		const limiterDailyCreateUser = new RateLimiterMongo({
 			storeClient: connection,
 			points: 5,
-			duration: (today.setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-			blockDuration: (today.setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+			duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+			blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
 			tableName: "create-user-daily-limiter",
 		});
 
@@ -45,8 +43,8 @@ try {
 		const limiterDailyLogIn = new RateLimiterMongo({
 			storeClient: connection,
 			points: 15,
-			duration: (today.setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-			blockDuration: (today.setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+			duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+			blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
 			tableName: "log-in-daily-limiter",
 		});
 
@@ -61,165 +59,8 @@ try {
 			.use(ip())
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
+			// .onRequest((context) => console.info(context))
 			.get("/", () => "Hello Amir")
-			// .get("/add-test-songs", () => {
-			// 	MuzikSongModel.insertMany([
-			// 		{
-			// 			type: "ALBUM",
-			// 			parentalAdvisory: true,
-			// 			favorite: false,
-			// 			title: "manam oon ke maghroor",
-			// 			artist: "shayea",
-			// 			coArtists: [],
-			// 			album: "injaneb",
-			// 			image: "http://localhost:3000/image/shayea_injaneb.webp",
-			// 			file: "http://localhost:3000/song/shayea_manam-oon-ke-maghroor.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: true,
-			// 			favorite: false,
-			// 			title: "miri tu lak",
-			// 			artist: "reza pishro",
-			// 			coArtists: ["ho3ein"],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/reza-pishro_miri-tu-lak.webp",
-			// 			file: "http://localhost:3000/song/reza-pishro_miri-tu-lak.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: true,
-			// 			favorite: false,
-			// 			title: "gangesh balas",
-			// 			artist: "sohrab MJ",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/sohrab-mj_gangesh-balas.webp",
-			// 			file: "http://localhost:3000/song/sohrab-mj_gangesh-balas.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "paghadam",
-			// 			artist: "alireza talischi",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/alireza-talischi_paghadam.webp",
-			// 			file: "http://localhost:3000/song/alireza-talischi_paghadam.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "bi ehsas (instrumental)",
-			// 			artist: "shadmehr aghili",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/shadmehr-aghili_bi-ehsas-instrumental.webp",
-			// 			file: "http://localhost:3000/song/shadmehr-aghili_bi-ehsas-instrumental.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "ghabe akse khali",
-			// 			artist: "sirvan khosravi",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/sirvan-khosravi_ghabe-akse-khali.webp",
-			// 			file: "http://localhost:3000/song/sirvan-khosravi_ghabe-akse-khali.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "nagi ke nagoftam",
-			// 			artist: "farzad farzin",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/farzad-farzin_nagi-ke-nagoftam.webp",
-			// 			file: "http://localhost:3000/song/farzad-farzin_nagi-ke-nagoftam.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "ghermez",
-			// 			artist: "garsha rezaei",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/garsha-rezaei_ghermez.webp",
-			// 			file: "http://localhost:3000/song/garsha-rezaei_ghermez.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "ba toam",
-			// 			artist: "naser zeynali",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/naser-zeynali_ba-toam.webp",
-			// 			file: "http://localhost:3000/song/naser-zeynali_ba-toam.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "shookhi nadaram",
-			// 			artist: "sohrab pakzad",
-			// 			coArtists: ["asef aria"],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/sohrab-pakzad_shookhi-nadaram.webp",
-			// 			file: "http://localhost:3000/song/sohrab-pakzad_shookhi-nadaram.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "dastan",
-			// 			artist: "asef aria",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/asef-aria_dastan.webp",
-			// 			file: "http://localhost:3000/song/asef-aria_dastan.mp3",
-			// 		},
-			// 		{
-			// 			type: "SINGLE",
-			// 			parentalAdvisory: false,
-			// 			favorite: false,
-			// 			title: "vasalam",
-			// 			artist: "macan band",
-			// 			coArtists: [],
-			// 			album: "",
-			// 			image: "http://localhost:3000/image/macan-band_vasalam.webp",
-			// 			file: "http://localhost:3000/song/macan-band_vasalam.mp3",
-			// 		},
-			// 		{
-			// 			type: "ALBUM",
-			// 			parentalAdvisory: true,
-			// 			favorite: false,
-			// 			title: "yelkhi",
-			// 			artist: "shayea",
-			// 			coArtists: ["zaal"],
-			// 			album: "amadebash",
-			// 			image: "http://localhost:3000/image/shayea_amadebash.webp",
-			// 			file: "http://localhost:3000/song/shayea_yelkhi.mp3",
-			// 		},
-			// 		{
-			// 			type: "ALBUM",
-			// 			parentalAdvisory: true,
-			// 			favorite: false,
-			// 			title: "vel kon",
-			// 			artist: "shayea",
-			// 			coArtists: ["amir khalvat"],
-			// 			album: "amadebash",
-			// 			image: "http://localhost:3000/image/shayea_amadebash.webp",
-			// 			file: "http://localhost:3000/song/shayea_vel-kon.mp3",
-			// 		},
-			// 	]);
-			// })
 			.get("/user-info", () => {
 				return {
 					id: "1",
@@ -240,18 +81,13 @@ try {
 			)
 			.get(
 				"/check-token",
-				async ({
-					jwt,
-					cookie: {
-						token: { value },
-					},
-				}) => {
-					const tokenData = await jwt.verify(value);
+				async ({ jwt, cookie }) => {
+					const tokenData = await jwt.verify(cookie.auth.value);
 
 					if (tokenData) return true;
 					else return false;
 				},
-				{ cookie: t.Object({ token: t.String() }) }
+				{ cookie: t.Object({ auth: t.String() }) }
 			)
 			.post(
 				"/create-user",
@@ -278,7 +114,7 @@ try {
 			)
 			.post(
 				"/user-log-in",
-				async ({ body: { email, password }, jwt, cookie: { token } }) => {
+				async ({ body: { email, password }, jwt, cookie: { auth } }) => {
 					const user = await UserModel.findOne({ email }).exec();
 
 					if (user) {
@@ -286,12 +122,11 @@ try {
 						const { id, fullName, email, phoneNumber, picture } = user;
 
 						if (correctPass) {
-							token.set({
+							auth.set({
 								value: await jwt.sign({ id, email }),
 								httpOnly: true,
 								maxAge: 3600 * 24 * 7, // ? 7 days
-								priority: "high",
-								// secure: true
+								// secure: true,
 							});
 
 							return {
