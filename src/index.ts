@@ -54,6 +54,7 @@ try {
 				jwt({
 					name: "jwt",
 					secret: "/:r=a%fGu#y(7y]tLzgtnnH$/qTZTC4fJ)RH#r:YBM=vQMakHc]Tmi;&baw@zz3F",
+					exp: 3600 * 24 * 7, // ? 7 Days in seconds
 				})
 			)
 			.use(ip())
@@ -79,15 +80,21 @@ try {
 			.get("/video/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
-			.get(
+			.post(
 				"/check-token",
-				async ({ jwt, cookie }) => {
-					const tokenData = await jwt.verify(cookie.auth.value);
+				async ({ body, jwt }) => {
+					const tokenData = await jwt.verify(body);
 
-					if (tokenData) return true;
-					else return false;
+					if (tokenData) {
+						const { id, firstName, lastName, fullName, email } = tokenData;
+
+						return {
+							user: { firstName, lastName, fullName, email },
+							token: await jwt.sign({ id, firstName, lastName, fullName, email }),
+						};
+					} else return { user: null, token: "" };
 				},
-				{ cookie: t.Object({ auth: t.String() }) }
+				{ body: t.String() }
 			)
 			.post(
 				"/create-user",
@@ -95,10 +102,17 @@ try {
 					(await UserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
 				{
 					body: t.Object({
-						firstName: t.String(),
-						lastName: t.String(),
-						email: t.String(),
-						password: t.String(),
+						firstName: t.String({ minLength: 2, maxLength: 24 }),
+						lastName: t.String({ minLength: 2, maxLength: 32 }),
+						email: t.String({
+							pattern: "^((?!.)[w-_.]*[^.])(@w+)(.w+(.w+)?[^.W])$",
+						}),
+						password: t.String({
+							pattern: "^(?=.*d)(?=.*[A-Z])(?=.*[a-z])(?=.*[^wds:])([^s]){8,64}$",
+							error(error) {
+								console.error(error);
+							},
+						}),
 					}),
 					async beforeHandle({ ip, set }) {
 						const limiterResultConsecutive = await limiterConsecutiveCreateUser.consume(ip, 1);
@@ -114,36 +128,28 @@ try {
 			)
 			.post(
 				"/user-log-in",
-				async ({ body: { email, password }, jwt, cookie: { auth } }) => {
+				async ({ body: { email, password }, jwt }) => {
 					const user = await UserModel.findOne({ email }).exec();
 
 					if (user) {
 						const correctPass = await Bun.password.verify(password, user.password);
-						const { id, fullName, email, phoneNumber, picture } = user;
+						const { id, firstName, lastName, fullName, email, phoneNumber, picture } = user;
 
-						if (correctPass) {
-							auth.set({
-								value: await jwt.sign({ id, email }),
-								httpOnly: true,
-								maxAge: 3600 * 24 * 7, // ? 7 days
-								// secure: true,
-							});
-
+						if (correctPass)
 							return {
-								user: {
-									fullName,
-									email,
-									phoneNumber,
-									picture,
-								},
-								success: true,
+								user: { firstName, lastName, fullName, email, phoneNumber, picture },
+								token: await jwt.sign({ id, firstName, lastName, fullName, email }),
 							};
-						} else
+						else
 							return {
-								user: { fullName, email, phoneNumber },
-								success: false,
+								user: null,
+								token: "",
 							};
-					} else if (!user) return { user: null, success: false };
+					} else if (!user)
+						return {
+							user: null,
+							token: "",
+						};
 				},
 				{
 					body: t.Object({ email: t.String(), password: t.String() }),
