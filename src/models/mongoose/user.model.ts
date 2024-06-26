@@ -1,7 +1,7 @@
 import { Schema, model } from "mongoose";
 import MongooseDelete from "mongoose-delete";
 
-const userSchema = new Schema(
+const myTunesUserSchema = new Schema(
 	{
 		firstName: { type: Schema.Types.String, required: true },
 		lastName: { type: Schema.Types.String, required: true },
@@ -23,8 +23,8 @@ const userSchema = new Schema(
 	}
 );
 
-userSchema.plugin(MongooseDelete, { deletedAt: true, deletedBy: true });
+myTunesUserSchema.plugin(MongooseDelete, { deletedAt: true, deletedBy: true });
 
-const User = model("User", userSchema);
+const MyTunesUser = model("MyTunes-User", myTunesUserSchema);
 
-export default User;
+export default MyTunesUser;

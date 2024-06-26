@@ -1,7 +1,7 @@
 import { Schema, model } from "mongoose";
 import MongooseDelete from "mongoose-delete";
 
-const muzikSongSchema = new Schema(
+const muTunesSongSchema = new Schema(
 	{
 		type: {
 			type: Schema.Types.String,
@@ -22,8 +22,8 @@ const muzikSongSchema = new Schema(
 	{ timestamps: true }
 );
 
-muzikSongSchema.plugin(MongooseDelete, { deletedAt: true, deletedBy: true });
+muTunesSongSchema.plugin(MongooseDelete, { deletedAt: true, deletedBy: true });
 
-const MuzikSong = model("Muzik-Song", muzikSongSchema);
+const MyTunesSong = model("MyTunes-Song", muTunesSongSchema);
 
-export default MuzikSong;
+export default MyTunesSong;

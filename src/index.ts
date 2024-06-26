@@ -6,9 +6,10 @@ import { ip } from "elysia-ip";
 
 import { mongooseConnection } from "./databases/mongodb.database";
 
-import MuzikSongModel from "./models/mongoose/muzik-song.model";
-import FolderPathModel from "./models/mongoose/folder-path.model";
-import UserModel from "./models/mongoose/user.model";
+import MyTunesSongModel from "./models/mongoose/song.model";
+import MyTunesDirectoryModel from "./models/mongoose/directory.model";
+import MyTunesUserModel from "./models/mongoose/user.model";
+import MyTunesEventModel from "./models/mongoose/event.model";
 
 try {
 	const { connection } = await mongooseConnection();
@@ -16,51 +17,23 @@ try {
 	if (connection) {
 		console.info("connected to mongoDB");
 
-		const limiterConsecutiveCreateUser = new RateLimiterMongo({
-			storeClient: connection,
-			points: 3,
-			duration: 600, // ? 10 mins in seconds
-			blockDuration: 3600, // ? an hour in seconds
-			tableName: "create-user-consecutive-limiter",
-		});
-
-		const limiterDailyCreateUser = new RateLimiterMongo({
-			storeClient: connection,
-			points: 5,
-			duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-			blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
-			tableName: "create-user-daily-limiter",
-		});
-
-		const limiterConsecutiveLogIn = new RateLimiterMongo({
-			storeClient: connection,
-			points: 5,
-			duration: 300, // ? 5 mins in seconds
-			blockDuration: 300, // ? 5 mins in seconds
-			tableName: "log-in-consecutive-limiter",
-		});
-
-		const limiterDailyLogIn = new RateLimiterMongo({
-			storeClient: connection,
-			points: 15,
-			duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-			blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
-			tableName: "log-in-daily-limiter",
-		});
-
 		new Elysia()
-			.use(cors({ methods: "*" }))
+			.use(
+				cors({
+					methods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+				})
+			)
 			.use(
 				jwt({
 					name: "jwt",
 					secret: "/:r=a%fGu#y(7y]tLzgtnnH$/qTZTC4fJ)RH#r:YBM=vQMakHc]Tmi;&baw@zz3F",
-					exp: 3600 * 24 * 7, // ? 7 Days in seconds
+					exp: "3d",
 				})
 			)
 			.use(ip())
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
-			// .onRequest((context) => console.info(context))
+			// .onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello Amir")
 			.get("/user-info", () => {
 				return {
@@ -71,8 +44,8 @@ try {
 				};
 			})
 			.get("/user-image", () => Bun.file("./server/content/image/amir-image.jpg"))
-			.get("/folder-paths", async () => await FolderPathModel.find({}))
-			.get("/songs", async () => await MuzikSongModel.find({}))
+			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
+			.get("/songs", async () => await MyTunesSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
 			.get("/song/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`)
@@ -80,18 +53,21 @@ try {
 			.get("/video/:name", ({ params: { name } }) =>
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
+			.get("/events", async () => await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }))
 			.post(
 				"/check-token",
 				async ({ body, jwt }) => {
 					const tokenData = await jwt.verify(body);
 
 					if (tokenData) {
-						const { id, firstName, lastName, fullName, email } = tokenData;
+						const { id, firstName, lastName, fullName, email, createdAt, expiresAt } = tokenData;
 
-						return {
-							user: { firstName, lastName, fullName, email },
-							token: await jwt.sign({ id, firstName, lastName, fullName, email }),
-						};
+						if (Date.parse(expiresAt as string) - Date.now() > 60 * 1000)
+							return {
+								user: { firstName, lastName, fullName, email },
+								token: await jwt.sign({ id, firstName, lastName, fullName, email }),
+							};
+						else return { user: null, token: "" };
 					} else return { user: null, token: "" };
 				},
 				{ body: t.String() }
@@ -99,22 +75,31 @@ try {
 			.post(
 				"/create-user",
 				async ({ body: { firstName, lastName, email, password } }) =>
-					(await UserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
+					(await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
 				{
 					body: t.Object({
-						firstName: t.String({ minLength: 2, maxLength: 24 }),
-						lastName: t.String({ minLength: 2, maxLength: 32 }),
-						email: t.String({
-							pattern: "^((?!.)[w-_.]*[^.])(@w+)(.w+(.w+)?[^.W])$",
-						}),
-						password: t.String({
-							pattern: "^(?=.*d)(?=.*[A-Z])(?=.*[a-z])(?=.*[^wds:])([^s]){8,64}$",
-							error(error) {
-								console.error(error);
-							},
-						}),
+						firstName: t.String(),
+						lastName: t.String(),
+						email: t.String(), // "^((?!.)[w-_.]*[^.])(@w+)(.w+(.w+)?[^.W])$"
+						password: t.String(), // "^(?=.*d)(?=.*[A-Z])(?=.*[a-z])(?=.*[^wds:])([^s]){8,64}$"
 					}),
 					async beforeHandle({ ip, set }) {
+						const limiterConsecutiveCreateUser = new RateLimiterMongo({
+							storeClient: connection,
+							points: 3,
+							duration: 600, // ? 10 mins in seconds
+							blockDuration: 3600, // ? an hour in seconds
+							tableName: "create-user-consecutive-limiter",
+						});
+
+						const limiterDailyCreateUser = new RateLimiterMongo({
+							storeClient: connection,
+							points: 5,
+							duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+							blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+							tableName: "create-user-daily-limiter",
+						});
+
 						const limiterResultConsecutive = await limiterConsecutiveCreateUser.consume(ip, 1);
 						const limiterResultDaily = await limiterDailyCreateUser.consume(ip, 1);
 
@@ -128,19 +113,40 @@ try {
 			)
 			.post(
 				"/user-log-in",
-				async ({ body: { email, password }, jwt }) => {
-					const user = await UserModel.findOne({ email }).exec();
+				async ({ body: { email, password }, jwt, cookie: { auth } }) => {
+					const user = await MyTunesUserModel.findOne({ email }).exec();
 
 					if (user) {
 						const correctPass = await Bun.password.verify(password, user.password);
-						const { id, firstName, lastName, fullName, email, phoneNumber, picture } = user;
+						const { id, firstName, lastName, email, phoneNumber, picture } = user;
 
-						if (correctPass)
+						if (correctPass) {
+							auth.set({
+								value: await jwt.sign({
+									id,
+									firstName,
+									lastName,
+									email,
+									createdAt: new Date().toISOString(),
+									expiresAt: new Date(new Date().setDate(new Date().getDate() + 3)).toISOString(),
+								}),
+								httpOnly: true,
+								maxAge: 3600 * 24 * 3,
+								sameSite: "lax",
+								secure: false,
+							});
 							return {
-								user: { firstName, lastName, fullName, email, phoneNumber, picture },
-								token: await jwt.sign({ id, firstName, lastName, fullName, email }),
+								user: { firstName, lastName, email, phoneNumber, picture },
+								token: await jwt.sign({
+									id,
+									firstName,
+									lastName,
+									email,
+									createdAt: new Date().toISOString(),
+									expiresAt: new Date(new Date().setDate(new Date().getDate() + 3)).toISOString(),
+								}),
 							};
-						else
+						} else
 							return {
 								user: null,
 								token: "",
@@ -154,6 +160,22 @@ try {
 				{
 					body: t.Object({ email: t.String(), password: t.String() }),
 					async beforeHandle({ ip, set }) {
+						const limiterConsecutiveLogIn = new RateLimiterMongo({
+							storeClient: connection,
+							points: 5,
+							duration: 300, // ? 5 mins in seconds
+							blockDuration: 300, // ? 5 mins in seconds
+							tableName: "log-in-consecutive-limiter",
+						});
+
+						const limiterDailyLogIn = new RateLimiterMongo({
+							storeClient: connection,
+							points: 15,
+							duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+							blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+							tableName: "log-in-daily-limiter",
+						});
+
 						const limiterResultConsecutive = await limiterConsecutiveLogIn.consume(ip, 1);
 						const limiterResultDaily = await limiterDailyLogIn.consume(ip, 1);
 
@@ -167,7 +189,7 @@ try {
 			.post(
 				"/local-songs",
 				async ({ body }) => {
-					const savedMuziks = await MuzikSongModel.create(body);
+					const savedMuziks = await MyTunesSongModel.create(body);
 
 					if (savedMuziks) return savedMuziks;
 				},
@@ -185,7 +207,7 @@ try {
 			.post(
 				"/local-directory",
 				async ({ body }) => {
-					const savedDirectory = (await FolderPathModel.create({ path: body })).toJSON();
+					const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
 
 					if (savedDirectory) return savedDirectory;
 				},
@@ -193,10 +215,10 @@ try {
 					body: t.String(),
 				}
 			)
-			.patch("/favorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
+			.patch("/favorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
 				body: t.String(),
 			})
-			.patch("/unfavorite", async ({ body }) => await MuzikSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
+			.patch("/unfavorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
 				body: t.String(),
 			})
 			.listen(3000);
@@ -204,205 +226,3 @@ try {
 } catch (error) {
 	throw new Error("could not run backend", { cause: error });
 }
-
-// newReleases: [
-//   {
-//     id: '15',
-//     title: 'shodi eshgham',
-//     artist: 'meysam ebrahimi',
-//   },
-//   {
-//     id: '16',
-//     title: 'gole niloofar',
-//     artist: 'ragheb',
-//   },
-//   {
-//     id: '17',
-//     title: 'hala hey',
-//     artist: 'armin zareei',
-//   },
-//   {
-//     id: '18',
-//     title: '',
-//     artist: '',
-//   },
-//   {
-//     id: '19',
-//     title: '',
-//     artist: '',
-//   },
-//   {
-//     id: '20',
-//     title: '',
-//     artist: '',
-//   },
-//   {
-//     id: '21',
-//     title: '',
-//     artist: '',
-//   },
-// ],
-
-// recommended: [
-//   {
-//     id: '1',
-//     type: 'ALBUM',
-//     parentalAdvisory: true,
-//     title: 'manam oon ke maghroor',
-//     artist: 'shayea',
-//     coArtists: [],
-//     album: 'injaneb',
-//     image: 'http://localhost:3000/image/shayea_injaneb.webp',
-//     file: 'http://localhost:3000/song/shayea_manam-oon-ke-maghroor.mp3',
-//   },
-//   {
-//     id: '2',
-//     type: 'SINGLE',
-//     parentalAdvisory: true,
-//     title: 'miri tu lak',
-//     artist: 'reza pishro',
-//     coArtists: ['ho3ein'],
-//     album: '',
-//     image: 'http://localhost:3000/image/reza-pishro_miri-tu-lak.webp',
-//     file: 'http://localhost:3000/song/reza-pishro_miri-tu-lak.mp3',
-//   },
-//   {
-//     id: '3',
-//     type: 'SINGLE',
-//     parentalAdvisory: true,
-//     title: 'gangesh balas',
-//     artist: 'sohrab MJ',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/sohrab-mj_gangesh-balas.webp',
-//     file: 'http://localhost:3000/song/sohrab-mj_gangesh-balas.mp3',
-//   },
-//   {
-//     id: '4',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'paghadam',
-//     artist: 'alireza talischi',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/alireza-talischi_paghadam.webp',
-//     file: 'http://localhost:3000/song/alireza-talischi_paghadam.mp3',
-//   },
-//   {
-//     id: '5',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'bi ehsas (instrumental)',
-//     artist: 'shadmehr aghili',
-//     coArtists: [],
-//     album: '',
-//     image:
-//       'http://localhost:3000/image/shadmehr-aghili_bi-ehsas-instrumental.webp',
-//     file: 'http://localhost:3000/song/shadmehr-aghili_bi-ehsas-instrumental.mp3',
-//   },
-//   {
-//     id: '6',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'ghabe akse khali',
-//     artist: 'sirvan khosravi',
-//     coArtists: [],
-//     album: '',
-//     image:
-//       'http://localhost:3000/image/sirvan-khosravi_ghabe-akse-khali.webp',
-//     file: 'http://localhost:3000/song/sirvan-khosravi_ghabe-akse-khali.mp3',
-//   },
-//   {
-//     id: '7',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'nagi ke nagoftam',
-//     artist: 'farzad farzin',
-//     coArtists: [],
-//     album: '',
-//     image:
-//       'http://localhost:3000/image/farzad-farzin_nagi-ke-nagoftam.webp',
-//     file: 'http://localhost:3000/song/farzad-farzin_nagi-ke-nagoftam.mp3',
-//   },
-// ]
-
-// topTracks: [
-//   {
-//     id: '8',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'ghermez',
-//     artist: 'garsha rezaei',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/garsha-rezaei_ghermez.webp',
-//     file: 'http://localhost:3000/song/garsha-rezaei_ghermez.mp3',
-//   },
-//   {
-//     id: '9',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'ba toam',
-//     artist: 'naser zeynali',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/naser-zeynali_ba-toam.webp',
-//     file: 'http://localhost:3000/song/naser-zeynali_ba-toam.mp3',
-//   },
-//   {
-//     id: '10',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'shookhi nadaram',
-//     artist: 'sohrab pakzad',
-//     coArtists: ['asef aria'],
-//     album: '',
-//     image:
-//       'http://localhost:3000/image/sohrab-pakzad_shookhi-nadaram.webp',
-//     file: 'http://localhost:3000/song/sohrab-pakzad_shookhi-nadaram.mp3',
-//   },
-//   {
-//     id: '11',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'dastan',
-//     artist: 'asef aria',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/asef-aria_dastan.webp',
-//     file: 'http://localhost:3000/song/asef-aria_dastan.mp3',
-//   },
-//   {
-//     id: '12',
-//     type: 'SINGLE',
-//     parentalAdvisory: false,
-//     title: 'vasalam',
-//     artist: 'macan band',
-//     coArtists: [],
-//     album: '',
-//     image: 'http://localhost:3000/image/macan-band_vasalam.webp',
-//     file: 'http://localhost:3000/song/macan-band_vasalam.mp3',
-//   },
-//   {
-//     id: '13',
-//     type: 'ALBUM',
-//     parentalAdvisory: true,
-//     title: 'yelkhi',
-//     artist: 'shayea',
-//     coArtists: ['zaal'],
-//     album: 'amadebash',
-//     image: 'http://localhost:3000/image/shayea_amadebash.webp',
-//     file: 'http://localhost:3000/song/shayea_yelkhi.mp3',
-//   },
-//   {
-//     id: '14',
-//     type: 'ALBUM',
-//     parentalAdvisory: true,
-//     title: 'vel kon',
-//     artist: 'shayea',
-//     coArtists: ['amir khalvat'],
-//     album: 'amadebash',
-//     image: 'http://localhost:3000/image/shayea_amadebash.webp',
-//     file: 'http://localhost:3000/song/shayea_vel-kon.mp3',
-//   },
-// ]
