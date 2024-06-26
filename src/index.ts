@@ -21,6 +21,8 @@ try {
 			.use(
 				cors({
 					methods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+					credentials: true,
+					maxAge: 3600 * 24 * 3,
 				})
 			)
 			.use(
@@ -33,7 +35,7 @@ try {
 			.use(ip())
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
-			// .onRequest((context) => console.info("context", context))
+			.onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello Amir")
 			.get("/user-info", () => {
 				return {
@@ -54,24 +56,20 @@ try {
 				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
 			)
 			.get("/events", async () => await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }))
-			.post(
-				"/check-token",
-				async ({ body, jwt }) => {
-					const tokenData = await jwt.verify(body);
+			.get("/check-token", async ({ headers, jwt }) => {
+				console.info("headers", headers);
 
-					if (tokenData) {
-						const { id, firstName, lastName, fullName, email, createdAt, expiresAt } = tokenData;
+				const tokenData = await jwt.verify(headers["authorization"]);
 
-						if (Date.parse(expiresAt as string) - Date.now() > 60 * 1000)
-							return {
-								user: { firstName, lastName, fullName, email },
-								token: await jwt.sign({ id, firstName, lastName, fullName, email }),
-							};
-						else return { user: null, token: "" };
-					} else return { user: null, token: "" };
-				},
-				{ body: t.String() }
-			)
+				if (tokenData) {
+					const { id, firstName, lastName, email } = tokenData;
+
+					return {
+						user: { firstName, lastName, email },
+						token: await jwt.sign({ id, firstName, lastName, email }),
+					};
+				} else return { user: null, token: "" };
+			})
 			.post(
 				"/create-user",
 				async ({ body: { firstName, lastName, email, password } }) =>
@@ -113,7 +111,7 @@ try {
 			)
 			.post(
 				"/user-log-in",
-				async ({ body: { email, password }, jwt, cookie: { auth } }) => {
+				async ({ body: { email, password }, jwt }) => {
 					const user = await MyTunesUserModel.findOne({ email }).exec();
 
 					if (user) {
@@ -121,20 +119,6 @@ try {
 						const { id, firstName, lastName, email, phoneNumber, picture } = user;
 
 						if (correctPass) {
-							auth.set({
-								value: await jwt.sign({
-									id,
-									firstName,
-									lastName,
-									email,
-									createdAt: new Date().toISOString(),
-									expiresAt: new Date(new Date().setDate(new Date().getDate() + 3)).toISOString(),
-								}),
-								httpOnly: true,
-								maxAge: 3600 * 24 * 3,
-								sameSite: "lax",
-								secure: false,
-							});
 							return {
 								user: { firstName, lastName, email, phoneNumber, picture },
 								token: await jwt.sign({
@@ -142,8 +126,6 @@ try {
 									firstName,
 									lastName,
 									email,
-									createdAt: new Date().toISOString(),
-									expiresAt: new Date(new Date().setDate(new Date().getDate() + 3)).toISOString(),
 								}),
 							};
 						} else
