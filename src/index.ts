@@ -37,15 +37,6 @@ try {
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			.onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello Amir")
-			.get("/user-info", () => {
-				return {
-					id: "1",
-					firstName: "Amir",
-					lastName: "Allahdadian",
-					email: "amir.allahdadian@gmail.com",
-				};
-			})
-			.get("/user-image", () => Bun.file("./server/content/image/amir-image.jpg"))
 			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
 			.get("/songs", async () => await MyTunesSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
