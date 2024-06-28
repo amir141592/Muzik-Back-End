@@ -20,6 +20,7 @@ Open http://localhost:3000/ with your browser to see the result.
 
 ## TODO List ✅️ ❌️ ⏭️
 
+- remove unused routes
 - add types for body, params and queries
 - handle errors locally and globally
 - develope a response type
