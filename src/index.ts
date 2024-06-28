@@ -37,22 +37,27 @@ try {
 			.use(bearer())
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
-			.onRequest((context) => console.info("context", context))
+			// .onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello, I am Elysia")
 			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
 			.get("/songs", async () => await MyTunesSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`), {
-				params: t.Object({ name: t.String({ pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm" }) }),
+				params: t.Object({
+					name: t.String({
+						pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm",
+						error: "Only files with jpg, jpeg, png and webp extentions are allowed",
+					}),
+				}),
 			})
 			.get(
 				"/song/:name",
 				({ params: { name } }) => Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`),
-				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp3)\b/gm" }) }) }
+				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp3)\b/gm", error: "Only files with mp3 extentions are allowed" }) }) }
 			)
 			.get(
 				"/video/:name",
 				({ params: { name } }) => Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`),
-				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp4)\b/gm" }) }) }
+				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp4)\b/gm", error: "Only files with mp4 extentions are allowed" }) }) }
 			)
 			.get("/events", async () => await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }))
 			.get(
@@ -69,7 +74,11 @@ try {
 						};
 					} else return { user: null, token: "" };
 				},
-				{ headers: t.Object({ authorization: t.String({ pattern: "\bBearer\b" }) }) }
+				{
+					headers: t.Object({
+						authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+					}),
+				}
 			)
 			.post(
 				"/create-user",
@@ -77,13 +86,14 @@ try {
 					(await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
 				{
 					body: t.Object({
-						firstName: t.String({ minLength: 2, maxLength: 24 }),
-						lastName: t.String({ minLength: 2, maxLength: 32 }),
-						email: t.String({ format: "email" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
+						firstName: t.String({ minLength: 2, maxLength: 24, error: "First name must be between 2 to 24 characters" }),
+						lastName: t.String({ minLength: 2, maxLength: 32, error: "Last name must be between 2 to 32 characters" }),
+						email: t.String({ format: "email", error: "email doesn't have a correct format" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
 						password: t.String({
 							minLength: 8,
 							maxLength: 64,
 							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
+							error: "Password doesn't have correct format",
 						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
 					}),
 					async beforeHandle({ ip, set }) {
@@ -146,11 +156,12 @@ try {
 				},
 				{
 					body: t.Object({
-						email: t.String({ format: "email" }),
+						email: t.String({ format: "email", error: "email doesn't have a correct format" }),
 						password: t.String({
 							minLength: 8,
 							maxLength: 64,
 							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
+							error: "Password doesn't have correct format",
 						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
 					}),
 					async beforeHandle({ ip, set }) {
@@ -190,10 +201,10 @@ try {
 				{
 					body: t.Array(
 						t.Object({
-							type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")]),
-							title: t.String(),
-							artist: t.String(),
-							file: t.String(),
+							type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")], { error: "Song type must be either SINGLE or ALBUM" }),
+							title: t.String({ error: "Title must be a string" }),
+							artist: t.String({ error: "Artist must be a string" }),
+							file: t.String({ error: "File path must be a string" }),
 						})
 					),
 				}
@@ -206,7 +217,7 @@ try {
 					if (savedDirectory) return savedDirectory;
 				},
 				{
-					body: t.String(),
+					body: t.String({ error: "Directory path must be a string" }),
 				}
 			)
 			.patch("/favorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
