@@ -36,7 +36,7 @@ try {
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			.onRequest((context) => console.info("context", context))
-			.get("/", () => "Hello Amir")
+			.get("/", () => "Hello, I am Elysia")
 			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
 			.get("/songs", async () => await MyTunesSongModel.find({}))
 			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
