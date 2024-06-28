@@ -1,8 +1,9 @@
-import { Elysia, t } from "elysia";
+import { Elysia, getSchemaValidator, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { RateLimiterMongo } from "rate-limiter-flexible";
 import { ip } from "elysia-ip";
+import { bearer } from "@elysiajs/bearer";
 
 import { mongooseConnection } from "./databases/mongodb.database";
 
@@ -33,44 +34,57 @@ try {
 				})
 			)
 			.use(ip())
+			.use(bearer())
 			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			.onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello, I am Elysia")
 			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
 			.get("/songs", async () => await MyTunesSongModel.find({}))
-			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`))
-			.get("/song/:name", ({ params: { name } }) =>
-				Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`)
+			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`), {
+				params: t.Object({ name: t.String({ pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm" }) }),
+			})
+			.get(
+				"/song/:name",
+				({ params: { name } }) => Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`),
+				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp3)\b/gm" }) }) }
 			)
-			.get("/video/:name", ({ params: { name } }) =>
-				Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`)
+			.get(
+				"/video/:name",
+				({ params: { name } }) => Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`),
+				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp4)\b/gm" }) }) }
 			)
 			.get("/events", async () => await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }))
-			.get("/check-token", async ({ headers, jwt }) => {
-				console.info("headers", headers);
+			.get(
+				"/check-token",
+				async ({ bearer, jwt }) => {
+					const tokenData = await jwt.verify(bearer);
 
-				const tokenData = await jwt.verify(headers["authorization"]);
+					if (tokenData) {
+						const { id, firstName, lastName, email } = tokenData;
 
-				if (tokenData) {
-					const { id, firstName, lastName, email } = tokenData;
-
-					return {
-						user: { firstName, lastName, email },
-						token: await jwt.sign({ id, firstName, lastName, email }),
-					};
-				} else return { user: null, token: "" };
-			})
+						return {
+							user: { firstName, lastName, email },
+							token: await jwt.sign({ id, firstName, lastName, email }),
+						};
+					} else return { user: null, token: "" };
+				},
+				{ headers: t.Object({ authorization: t.String({ pattern: "\bBearer\b" }) }) }
+			)
 			.post(
 				"/create-user",
 				async ({ body: { firstName, lastName, email, password } }) =>
 					(await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
 				{
 					body: t.Object({
-						firstName: t.String(),
-						lastName: t.String(),
-						email: t.String(), // "^((?!.)[w-_.]*[^.])(@w+)(.w+(.w+)?[^.W])$"
-						password: t.String(), // "^(?=.*d)(?=.*[A-Z])(?=.*[a-z])(?=.*[^wds:])([^s]){8,64}$"
+						firstName: t.String({ minLength: 2, maxLength: 24 }),
+						lastName: t.String({ minLength: 2, maxLength: 32 }),
+						email: t.String({ format: "email" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
+						password: t.String({
+							minLength: 8,
+							maxLength: 64,
+							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
+						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
 					}),
 					async beforeHandle({ ip, set }) {
 						const limiterConsecutiveCreateUser = new RateLimiterMongo({
@@ -131,7 +145,14 @@ try {
 						};
 				},
 				{
-					body: t.Object({ email: t.String(), password: t.String() }),
+					body: t.Object({
+						email: t.String({ format: "email" }),
+						password: t.String({
+							minLength: 8,
+							maxLength: 64,
+							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
+						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
+					}),
 					async beforeHandle({ ip, set }) {
 						const limiterConsecutiveLogIn = new RateLimiterMongo({
 							storeClient: connection,
