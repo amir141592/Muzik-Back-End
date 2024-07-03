@@ -1,4 +1,4 @@
-import { Elysia, getSchemaValidator, t } from "elysia";
+import { Elysia, t } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { RateLimiterMongo } from "rate-limiter-flexible";
@@ -35,66 +35,92 @@ try {
 			)
 			.use(ip())
 			.use(bearer())
-			.onError(({ error }) => console.error(new Error("Ops! backend blew up", { cause: error })))
+			// TODO write error handleing logic
+			.onError(({ error }) => {})
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			// .onRequest((context) => console.info("context", context))
-			.get("/", () => "Hello, I am Elysia")
-			.get("/folder-paths", async () => await MyTunesDirectoryModel.find({}))
-			.get("/songs", async () => await MyTunesSongModel.find({}))
-			.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`), {
-				params: t.Object({
-					name: t.String({
-						pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm",
-						error: "Only files with jpg, jpeg, png and webp extentions are allowed",
-					}),
-				}),
+			.get("/", () => "Hello, How do you do?")
+			.group("/file", (app) =>
+				app
+					.guard({
+						// headers: t.Object({
+						// 	authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+						// }),
+						response: t.File(),
+					})
+					// .onBeforeHandle(async ({ bearer, jwt }) => {
+					// 	const tokenData = await jwt.verify(bearer);
+
+					// 	if (!tokenData) throw new Error("Authorization failed. log in again!");
+					// })
+					.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`), {
+						params: t.Object({ name: t.String() }), // { pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm", error: "Only files with jpg, jpeg, png and webp extentions are allowed",}
+					})
+					.get(
+						"/song/:name",
+						({ params: { name } }) => Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`),
+						{ params: t.Object({ name: t.String() }) } // { pattern: "/\bw+.(mp3)\b/gm", error: "Only files with mp3 extentions are allowed" }
+					)
+					.get(
+						"/video/:name",
+						({ params: { name } }) => Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`),
+						{ params: t.Object({ name: t.String() }) } // { pattern: "/\bw+.(mp4)\b/gm", error: "Only files with mp4 extentions are allowed" }
+					)
+			)
+			.guard({
+				// TODO make returning a response optional
+				response: t.MaybeEmpty(
+					t.Object({
+						code: t.String(), // { pattern: "^([01234])([0123])d{2}(x)d{3}$" }
+						message: t.String(),
+						data: t.Optional(t.Unknown()),
+						errors: t.Optional(
+							t.Array(
+								t.Object({
+									location: t.String(),
+									param: t.String(),
+									value: t.Unknown(),
+									message: t.String(),
+								})
+							)
+						),
+					})
+				),
 			})
-			.get(
-				"/song/:name",
-				({ params: { name } }) => Bun.file(import.meta.dir + `/content/music/${name.split("_")[0]}/${name.split("_")[1]}`),
-				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp3)\b/gm", error: "Only files with mp3 extentions are allowed" }) }) }
-			)
-			.get(
-				"/video/:name",
-				({ params: { name } }) => Bun.file(import.meta.dir + `/content/video/${name.split("_")[0]}/${name.split("_")[1]}`),
-				{ params: t.Object({ name: t.String({ pattern: "/\bw+.(mp4)\b/gm", error: "Only files with mp4 extentions are allowed" }) }) }
-			)
-			.get("/events", async () => await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }))
-			.get(
-				"/check-token",
-				async ({ bearer, jwt }) => {
-					const tokenData = await jwt.verify(bearer);
-
-					if (tokenData) {
-						const { id, firstName, lastName, email } = tokenData;
-
-						return {
-							user: { firstName, lastName, email },
-							token: await jwt.sign({ id, firstName, lastName, email }),
-						};
-					} else return { user: null, token: "" };
-				},
-				{
-					headers: t.Object({
-						authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
-					}),
-				}
-			)
+			.get("/events", async () => {
+				return {
+					code: "2201x001",
+					message: "Fetched all upcoming, active and live events",
+					data: await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }),
+				};
+			})
 			.post(
 				"/create-user",
-				async ({ body: { firstName, lastName, email, password } }) =>
-					(await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) })).toJSON(),
+				async ({ body: { firstName, lastName, email, password } }) => {
+					const user = await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) });
+					if (user)
+						return {
+							code: "2201x002",
+							message: "Created user",
+							data: user,
+						};
+					else
+						return {
+							code: "4201x003",
+							message: "Could not create user",
+						};
+				},
 				{
 					body: t.Object({
 						firstName: t.String({ minLength: 2, maxLength: 24, error: "First name must be between 2 to 24 characters" }),
 						lastName: t.String({ minLength: 2, maxLength: 32, error: "Last name must be between 2 to 32 characters" }),
-						email: t.String({ format: "email", error: "email doesn't have a correct format" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
+						email: t.String({ format: "email", error: "email does not have a correct format" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
 						password: t.String({
 							minLength: 8,
 							maxLength: 64,
-							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
-							error: "Password doesn't have correct format",
-						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
+							// pattern: "(?=.*d)(?=.*[a-z])([^s]){8,64}",
+							error: "Password does not have correct format",
+						}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
 					}),
 					async beforeHandle({ ip, set }) {
 						const limiterConsecutiveCreateUser = new RateLimiterMongo({
@@ -119,7 +145,32 @@ try {
 						if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
 							set.status = "Too Many Requests";
 
-							return { limiterResultConsecutive, limiterResultDaily };
+							if (limiterResultConsecutive.remainingPoints == 0)
+								return {
+									code: "4201x004",
+									message: "Too many consecutive create user requests",
+									errors: [
+										{
+											location: "/create-user",
+											message: "Too many consecutive create user requests",
+											param: "limiterConsecutiveCreateUser",
+											value: limiterResultConsecutive,
+										},
+									],
+								};
+							else if (limiterResultDaily.remainingPoints == 0)
+								return {
+									code: "4201x005",
+									message: "Too many daily create user requests",
+									errors: [
+										{
+											location: "/create-user",
+											message: "Too many daily create user requests",
+											param: "limiterDailyCreateUser",
+											value: limiterResultDaily,
+										},
+									],
+								};
 						}
 					},
 				}
@@ -135,34 +186,38 @@ try {
 
 						if (correctPass) {
 							return {
-								user: { firstName, lastName, email, phoneNumber, picture },
-								token: await jwt.sign({
-									id,
-									firstName,
-									lastName,
-									email,
-								}),
+								code: "2201x006",
+								message: "User logged in",
+								data: {
+									user: { id, firstName, lastName, email, phoneNumber, picture },
+									token: await jwt.sign({
+										id,
+										firstName,
+										lastName,
+										email,
+									}),
+								},
 							};
 						} else
 							return {
-								user: null,
-								token: "",
+								code: "4201x007",
+								message: "User password was incorrect",
 							};
 					} else if (!user)
 						return {
-							user: null,
-							token: "",
+							code: "4301x008",
+							message: "User with this email does not exist",
 						};
 				},
 				{
 					body: t.Object({
-						email: t.String({ format: "email", error: "email doesn't have a correct format" }),
+						email: t.String({ format: "email", error: "Email does not have a correct format" }),
 						password: t.String({
 							minLength: 8,
 							maxLength: 64,
-							pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*d)[a-zA-Zd!@#$%^&*()_+{}[]:;<>,.?~\\/-]{8,64}$",
-							error: "Password doesn't have correct format",
-						}), // ? at least one lowercase letter, one uppercase letter, one digit, and allows for special characters (signs) with a minimum length of 8 characters and a maximum length of 64 characters
+							// pattern: "/(?=.*d)(?=.*[a-z])([^s]){8,64}/g",
+							error: "Password does not have correct format",
+						}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
 					}),
 					async beforeHandle({ ip, set }) {
 						const limiterConsecutiveLogIn = new RateLimiterMongo({
@@ -186,46 +241,138 @@ try {
 
 						if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
 							set.status = "Too Many Requests";
-							return { limiterResultConsecutive, limiterResultDaily };
+
+							if (limiterResultConsecutive.remainingPoints == 0)
+								return {
+									code: "4201x009",
+									message: "Too many consecutive log in requests",
+									errors: [
+										{
+											location: "/create-user",
+											message: "Too many consecutive log in requests",
+											param: "limiterConsecutiveLogIn",
+											value: limiterResultConsecutive,
+										},
+									],
+								};
+							else if (limiterResultDaily.remainingPoints == 0)
+								return {
+									code: "4201x010",
+									message: "Too many daily log in requests",
+									errors: [
+										{
+											location: "/create-user",
+											message: "Too many daily log in requests",
+											param: "limiterDailyLogIn",
+											value: limiterResultDaily,
+										},
+									],
+								};
 						}
 					},
 				}
 			)
-			.post(
-				"/local-songs",
-				async ({ body }) => {
-					const savedMuziks = await MyTunesSongModel.create(body);
+			.group("/user", (app) =>
+				app
+					.guard({
+						headers: t.Object({
+							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+						}),
+					})
+					.onBeforeHandle(async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
 
-					if (savedMuziks) return savedMuziks;
-				},
-				{
-					body: t.Array(
-						t.Object({
-							type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")], { error: "Song type must be either SINGLE or ALBUM" }),
-							title: t.String({ error: "Title must be a string" }),
-							artist: t.String({ error: "Artist must be a string" }),
-							file: t.String({ error: "File path must be a string" }),
-						})
-					),
-				}
-			)
-			.post(
-				"/local-directory",
-				async ({ body }) => {
-					const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
+						if (!tokenData) throw new Error("Authorization failed. log in again!");
+					})
+					.get("/songs", async () => {
+						const songs = await MyTunesSongModel.find({});
 
-					if (savedDirectory) return savedDirectory;
-				},
-				{
-					body: t.String({ error: "Directory path must be a string" }),
-				}
+						if (songs)
+							return {
+								code: "2202x001",
+								message: "Found all user local songs",
+								data: songs,
+							};
+						else
+							return {
+								code: "2202x002",
+								message: "Found no local songs for this user",
+								data: [],
+							};
+					})
+					.get("/directories", async () => {
+						const directories = await MyTunesDirectoryModel.find({});
+
+						if (directories)
+							return {
+								code: "2202x003",
+								message: "Found all user directories",
+								data: directories,
+							};
+						else
+							return {
+								code: "2202x004",
+								message: "Found no directory for this user",
+								data: [],
+							};
+					})
+					.get("/check-token", async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
+
+						if (tokenData) {
+							const { id, firstName, lastName, email } = tokenData;
+
+							return {
+								code: "2202x005",
+								message: "User token was valid and new token is sent",
+								data: {
+									user: { firstName, lastName, email },
+									token: await jwt.sign({ id, firstName, lastName, email }),
+								},
+							};
+						} else
+							return {
+								code: "4202x006",
+								message: "User token was not valid or expired",
+								data: { user: null, token: "" },
+							};
+					})
+					.post(
+						"/local-songs",
+						async ({ body }) => {
+							const savedMuziks = await MyTunesSongModel.create(body);
+
+							if (savedMuziks) return savedMuziks;
+						},
+						{
+							body: t.Array(
+								t.Object({
+									type: t.Union([t.Literal("SINGLE"), t.Literal("ALBUM")], { error: "Song type must be either SINGLE or ALBUM" }),
+									title: t.String({ error: "Title must be a string" }),
+									artist: t.String({ error: "Artist must be a string" }),
+									file: t.String({ error: "File path must be a string" }),
+								})
+							),
+						}
+					)
+					.post(
+						"/local-directory",
+						async ({ body }) => {
+							const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
+
+							if (savedDirectory) return savedDirectory;
+						},
+						{
+							body: t.String({ error: "Directory path must be a string" }),
+						}
+					)
+					.patch("/favorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
+						body: t.String(),
+					})
+					.patch("/unfavorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
+						body: t.String(),
+					})
 			)
-			.patch("/favorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
-				body: t.String(),
-			})
-			.patch("/unfavorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
-				body: t.String(),
-			})
 			.listen(3000);
 	}
 } catch (error) {
