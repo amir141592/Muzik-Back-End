@@ -36,23 +36,38 @@ try {
 			.use(ip())
 			.use(bearer())
 			// TODO write error handleing logic
-			.onError(({ error }) => {})
+			.onError(({ code, error }) => {
+				switch (code) {
+					case "PARSE":
+						return {
+							code: "4201x011",
+							message: "Request body type is not valid and could not be parsed",
+							data: error.body,
+						};
+
+					case "VALIDATION":
+						return {
+							code: "4201x012",
+							message: "Request body properties are not valid and could not be proccessed",
+							data: error.all,
+						};
+
+					default:
+						return {
+							code,
+							message: "An unknown error happened",
+							error,
+						};
+				}
+			})
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
 			// .onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello, How do you do?")
 			.group("/file", (app) =>
 				app
 					.guard({
-						// headers: t.Object({
-						// 	authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
-						// }),
 						response: t.File(),
 					})
-					// .onBeforeHandle(async ({ bearer, jwt }) => {
-					// 	const tokenData = await jwt.verify(bearer);
-
-					// 	if (!tokenData) throw new Error("Authorization failed. log in again!");
-					// })
 					.get("/image/:name", ({ params: { name } }) => Bun.file(import.meta.dir + `/content/image/${name}`), {
 						params: t.Object({ name: t.String() }), // { pattern: "/\bw+.(jpg|jpeg|png|webp)\b/gm", error: "Only files with jpg, jpeg, png and webp extentions are allowed",}
 					})
@@ -342,7 +357,17 @@ try {
 						async ({ body }) => {
 							const savedMuziks = await MyTunesSongModel.create(body);
 
-							if (savedMuziks) return savedMuziks;
+							if (savedMuziks)
+								return {
+									code: "2202x007",
+									message: "Saved sent local songs for this user",
+									data: savedMuziks,
+								};
+							else
+								return {
+									code: "4302x008",
+									message: "Could not save local songs for this user",
+								};
 						},
 						{
 							body: t.Array(
@@ -360,18 +385,64 @@ try {
 						async ({ body }) => {
 							const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
 
-							if (savedDirectory) return savedDirectory;
+							if (savedDirectory)
+								return {
+									code: "2202x009",
+									message: "Saved sent local directory for this user",
+									data: savedDirectory,
+								};
+							else
+								return {
+									code: "4302x010",
+									message: "Could not save local directory for this user",
+								};
 						},
 						{
 							body: t.String({ error: "Directory path must be a string" }),
 						}
 					)
-					.patch("/favorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true }), {
-						body: t.String(),
-					})
-					.patch("/unfavorite", async ({ body }) => await MyTunesSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true }), {
-						body: t.String(),
-					})
+					.patch(
+						"/favorite",
+						async ({ body }) => {
+							const favoritedSong = await MyTunesSongModel.findByIdAndUpdate(body, { favorite: true }, { new: true });
+
+							if (favoritedSong)
+								return {
+									code: "2202x011",
+									message: "Changed sent song to favorite for this user",
+									data: favoritedSong,
+								};
+							else
+								return {
+									code: "4302x012",
+									message: "Could not favorite sent song for this user",
+								};
+						},
+						{
+							body: t.String({ error: "Song id must be a string" }),
+						}
+					)
+					.patch(
+						"/unfavorite",
+						async ({ body }) => {
+							const unfavoritedSong = await MyTunesSongModel.findByIdAndUpdate(body, { favorite: false }, { new: true });
+
+							if (unfavoritedSong)
+								return {
+									code: "2202x013",
+									message: "Changed sent song to unfavorite for this user",
+									data: unfavoritedSong,
+								};
+							else
+								return {
+									code: "4302x014",
+									message: "Could not unfavorite sent song for this user",
+								};
+						},
+						{
+							body: t.String({ error: "Song id must be a string" }),
+						}
+					)
 			)
 			.listen(3000);
 	}
