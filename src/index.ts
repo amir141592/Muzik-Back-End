@@ -37,6 +37,8 @@ try {
 			.use(bearer())
 			// TODO write error handleing logic
 			.onError(({ code, error }) => {
+				console.error(error);
+
 				switch (code) {
 					case "PARSE":
 						return {
