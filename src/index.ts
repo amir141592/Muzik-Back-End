@@ -62,6 +62,7 @@ try {
 				}
 			})
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
+			.onRequest((context) => console.info(context.request.url, context))
 			.get("/", () => "Hello, How do you do?")
 			.group("/file", (app) =>
 				app
@@ -290,41 +291,52 @@ try {
 						}
 					)
 			)
-			.guard({
-				headers: t.Object({
-					authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
-				}),
-			})
-			.onBeforeHandle(async ({ bearer, jwt }) => {
-				const tokenData = await jwt.verify(bearer);
-
-				if (!tokenData) throw new Error("Authorization failed. log in again!");
-			})
 			.group("/user", (app) =>
-				app.get("/check-token", async ({ bearer, jwt }) => {
-					const tokenData = await jwt.verify(bearer);
+				app
+					.guard({
+						headers: t.Object({
+							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+						}),
+					})
+					.onBeforeHandle(async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
 
-					if (tokenData) {
-						const { id, firstName, lastName, email } = tokenData;
+						if (!tokenData) throw new Error("Authorization failed. log in again!");
+					})
+					.get("/check-token", async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
 
-						return {
-							code: "2202x005",
-							message: "User token was valid and new token is sent",
-							data: {
-								user: { firstName, lastName, email },
-								token: await jwt.sign({ id, firstName, lastName, email }),
-							},
-						};
-					} else
-						return {
-							code: "4202x006",
-							message: "User token was not valid or expired",
-							data: { user: null, token: "" },
-						};
-				})
+						if (tokenData) {
+							const { id, firstName, lastName, email } = tokenData;
+
+							return {
+								code: "2202x005",
+								message: "User token was valid and new token is sent",
+								data: {
+									user: { firstName, lastName, email },
+									token: await jwt.sign({ id, firstName, lastName, email }),
+								},
+							};
+						} else
+							return {
+								code: "4202x006",
+								message: "User token was not valid or expired",
+								data: { user: null, token: "" },
+							};
+					})
 			)
 			.group("/song", (app) =>
 				app
+					.guard({
+						headers: t.Object({
+							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+						}),
+					})
+					.onBeforeHandle(async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
+
+						if (!tokenData) throw new Error("Authorization failed. log in again!");
+					})
 					.get("/local-songs", async () => {
 						const songs = await MyTunesSongModel.find({});
 
@@ -414,6 +426,16 @@ try {
 			)
 			.group("/directory", (app) =>
 				app
+					.guard({
+						headers: t.Object({
+							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+						}),
+					})
+					.onBeforeHandle(async ({ bearer, jwt }) => {
+						const tokenData = await jwt.verify(bearer);
+
+						if (!tokenData) throw new Error("Authorization failed. log in again!");
+					})
 					.get("/local-directories", async () => {
 						const directories = await MyTunesDirectoryModel.find({});
 
