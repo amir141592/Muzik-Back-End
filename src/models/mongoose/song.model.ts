@@ -3,6 +3,7 @@ import MongooseDelete from "mongoose-delete";
 
 const muTunesSongSchema = new Schema(
 	{
+		user: { type: Schema.Types.ObjectId, required: true, ref: "MyTunes-User" },
 		type: {
 			type: Schema.Types.String,
 			enum: ["SINGLE", "ALBUM"],
@@ -10,7 +11,8 @@ const muTunesSongSchema = new Schema(
 		},
 		parentalAdvisory: { type: Schema.Types.Boolean, default: false },
 		favorite: { type: Schema.Types.Boolean, default: false },
-		mostPlayed: { type: Schema.Types.Boolean, default: false },
+		timesPlayed: { type: Schema.Types.Number, default: 0 },
+		lastTimePlayed: { type: Schema.Types.Date },
 		new: { type: Schema.Types.Boolean, default: true },
 		title: { type: Schema.Types.String, required: true },
 		artist: { type: Schema.Types.String, required: true },
