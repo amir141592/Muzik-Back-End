@@ -35,7 +35,6 @@ try {
 			)
 			.use(ip())
 			.use(bearer())
-			// TODO write error handleing logic
 			.onError(({ code, error }) => {
 				console.error(error);
 
@@ -63,7 +62,6 @@ try {
 				}
 			})
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
-			// .onRequest((context) => console.info("context", context))
 			.get("/", () => "Hello, How do you do?")
 			.group("/file", (app) =>
 				app
@@ -84,224 +82,250 @@ try {
 						{ params: t.Object({ name: t.String() }) } // { pattern: "/\bw+.(mp4)\b/gm", error: "Only files with mp4 extentions are allowed" }
 					)
 			)
-			.guard({
-				// TODO make returning a response optional
-				response: t.MaybeEmpty(
-					t.Object({
-						code: t.String(), // { pattern: "^([01234])([0123])d{2}(x)d{3}$" }
-						message: t.String(),
-						data: t.Optional(t.Unknown()),
-						errors: t.Optional(
-							t.Array(
-								t.Object({
-									location: t.String(),
-									param: t.String(),
-									value: t.Unknown(),
-									message: t.String(),
-								})
-							)
-						),
-					})
-				),
-			})
-			.get("/events", async () => {
-				return {
-					code: "2201x001",
-					message: "Fetched all upcoming, active and live events",
-					data: await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }),
-				};
-			})
-			.post(
-				"/create-user",
-				async ({ body: { firstName, lastName, email, password } }) => {
-					const user = await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) });
-					if (user)
-						return {
-							code: "2201x002",
-							message: "Created user",
-							data: user,
-						};
-					else
-						return {
-							code: "4201x003",
-							message: "Could not create user",
-						};
-				},
-				{
-					body: t.Object({
-						firstName: t.String({ minLength: 2, maxLength: 24, error: "First name must be between 2 to 24 characters" }),
-						lastName: t.String({ minLength: 2, maxLength: 32, error: "Last name must be between 2 to 32 characters" }),
-						email: t.String({ format: "email", error: "email does not have a correct format" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
-						password: t.String({
-							minLength: 8,
-							maxLength: 64,
-							// pattern: "(?=.*d)(?=.*[a-z])([^s]){8,64}",
-							error: "Password does not have correct format",
-						}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
-					}),
-					async beforeHandle({ ip, set }) {
-						const limiterConsecutiveCreateUser = new RateLimiterMongo({
-							storeClient: connection,
-							points: 3,
-							duration: 600, // ? 10 mins in seconds
-							blockDuration: 3600, // ? an hour in seconds
-							tableName: "create-user-consecutive-limiter",
-						});
-
-						const limiterDailyCreateUser = new RateLimiterMongo({
-							storeClient: connection,
-							points: 5,
-							duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-							blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
-							tableName: "create-user-daily-limiter",
-						});
-
-						const limiterResultConsecutive = await limiterConsecutiveCreateUser.consume(ip, 1);
-						const limiterResultDaily = await limiterDailyCreateUser.consume(ip, 1);
-
-						if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
-							set.status = "Too Many Requests";
-
-							if (limiterResultConsecutive.remainingPoints == 0)
-								return {
-									code: "4201x004",
-									message: "Too many consecutive create user requests",
-									errors: [
-										{
-											location: "/create-user",
-											message: "Too many consecutive create user requests",
-											param: "limiterConsecutiveCreateUser",
-											value: limiterResultConsecutive,
-										},
-									],
-								};
-							else if (limiterResultDaily.remainingPoints == 0)
-								return {
-									code: "4201x005",
-									message: "Too many daily create user requests",
-									errors: [
-										{
-											location: "/create-user",
-											message: "Too many daily create user requests",
-											param: "limiterDailyCreateUser",
-											value: limiterResultDaily,
-										},
-									],
-								};
-						}
-					},
-				}
-			)
-			.post(
-				"/user-log-in",
-				async ({ body: { email, password }, jwt }) => {
-					const user = await MyTunesUserModel.findOne({ email }).exec();
-
-					if (user) {
-						const correctPass = await Bun.password.verify(password, user.password);
-						const { id, firstName, lastName, email, phoneNumber, picture } = user;
-
-						if (correctPass) {
-							return {
-								code: "2201x006",
-								message: "User logged in",
-								data: {
-									user: { id, firstName, lastName, email, phoneNumber, picture },
-									token: await jwt.sign({
-										id,
-										firstName,
-										lastName,
-										email,
-									}),
-								},
-							};
-						} else
-							return {
-								code: "4201x007",
-								message: "User password was incorrect",
-							};
-					} else if (!user)
-						return {
-							code: "4301x008",
-							message: "User with this email does not exist",
-						};
-				},
-				{
-					body: t.Object({
-						email: t.String({ format: "email", error: "Email does not have a correct format" }),
-						password: t.String({
-							minLength: 8,
-							maxLength: 64,
-							// pattern: "/(?=.*d)(?=.*[a-z])([^s]){8,64}/g",
-							error: "Password does not have correct format",
-						}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
-					}),
-					async beforeHandle({ ip, set }) {
-						const limiterConsecutiveLogIn = new RateLimiterMongo({
-							storeClient: connection,
-							points: 5,
-							duration: 300, // ? 5 mins in seconds
-							blockDuration: 300, // ? 5 mins in seconds
-							tableName: "log-in-consecutive-limiter",
-						});
-
-						const limiterDailyLogIn = new RateLimiterMongo({
-							storeClient: connection,
-							points: 15,
-							duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
-							blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
-							tableName: "log-in-daily-limiter",
-						});
-
-						const limiterResultConsecutive = await limiterConsecutiveLogIn.consume(ip, 1);
-						const limiterResultDaily = await limiterDailyLogIn.consume(ip, 1);
-
-						if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
-							set.status = "Too Many Requests";
-
-							if (limiterResultConsecutive.remainingPoints == 0)
-								return {
-									code: "4201x009",
-									message: "Too many consecutive log in requests",
-									errors: [
-										{
-											location: "/create-user",
-											message: "Too many consecutive log in requests",
-											param: "limiterConsecutiveLogIn",
-											value: limiterResultConsecutive,
-										},
-									],
-								};
-							else if (limiterResultDaily.remainingPoints == 0)
-								return {
-									code: "4201x010",
-									message: "Too many daily log in requests",
-									errors: [
-										{
-											location: "/create-user",
-											message: "Too many daily log in requests",
-											param: "limiterDailyLogIn",
-											value: limiterResultDaily,
-										},
-									],
-								};
-						}
-					},
-				}
-			)
-			.group("/user", (app) =>
+			.group("/public", (app) =>
 				app
 					.guard({
-						headers: t.Object({
-							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
-						}),
+						// TODO make returning a response optional
+						response: t.MaybeEmpty(
+							t.Object({
+								code: t.String(), // { pattern: "^([01234])([0123])d{2}(x)d{3}$" }
+								message: t.String(),
+								data: t.Optional(t.Unknown()),
+								errors: t.Optional(
+									t.Array(
+										t.Object({
+											location: t.String(),
+											param: t.String(),
+											value: t.Unknown(),
+											message: t.String(),
+										})
+									)
+								),
+							})
+						),
 					})
-					.onBeforeHandle(async ({ bearer, jwt }) => {
-						const tokenData = await jwt.verify(bearer);
+					.get("/events", async () => {
+						return {
+							code: "2201x001",
+							message: "Fetched all upcoming, active and live events",
+							data: await MyTunesEventModel.find({ status: ["COMING", "ACTIVE", "LIVE"] }),
+						};
+					})
+					.post(
+						"/create-user",
+						async ({ body: { firstName, lastName, email, password } }) => {
+							const user = await MyTunesUserModel.create({ firstName, lastName, email, password: await Bun.password.hash(password) });
+							if (user)
+								return {
+									code: "2201x002",
+									message: "Created user",
+									data: user,
+								};
+							else
+								return {
+									code: "4201x003",
+									message: "Could not create user",
+								};
+						},
+						{
+							body: t.Object({
+								firstName: t.String({ minLength: 2, maxLength: 24, error: "First name must be between 2 to 24 characters" }),
+								lastName: t.String({ minLength: 2, maxLength: 32, error: "Last name must be between 2 to 32 characters" }),
+								email: t.String({ format: "email", error: "email does not have a correct format" }), // {minLength: 5, maxLength: 64,pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
+								password: t.String({
+									minLength: 8,
+									maxLength: 64,
+									// pattern: "(?=.*d)(?=.*[a-z])([^s]){8,64}",
+									error: "Password does not have correct format",
+								}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
+							}),
+							async beforeHandle({ ip, set }) {
+								const limiterConsecutiveCreateUser = new RateLimiterMongo({
+									storeClient: connection,
+									points: 3,
+									duration: 600, // ? 10 mins in seconds
+									blockDuration: 3600, // ? an hour in seconds
+									tableName: "create-user-consecutive-limiter",
+								});
 
-						if (!tokenData) throw new Error("Authorization failed. log in again!");
-					})
-					.get("/songs", async () => {
+								const limiterDailyCreateUser = new RateLimiterMongo({
+									storeClient: connection,
+									points: 5,
+									duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+									blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+									tableName: "create-user-daily-limiter",
+								});
+
+								const limiterResultConsecutive = await limiterConsecutiveCreateUser.consume(ip, 1);
+								const limiterResultDaily = await limiterDailyCreateUser.consume(ip, 1);
+
+								if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
+									set.status = "Too Many Requests";
+
+									if (limiterResultConsecutive.remainingPoints == 0)
+										return {
+											code: "4201x004",
+											message: "Too many consecutive create user requests",
+											errors: [
+												{
+													location: "/create-user",
+													message: "Too many consecutive create user requests",
+													param: "limiterConsecutiveCreateUser",
+													value: limiterResultConsecutive,
+												},
+											],
+										};
+									else if (limiterResultDaily.remainingPoints == 0)
+										return {
+											code: "4201x005",
+											message: "Too many daily create user requests",
+											errors: [
+												{
+													location: "/create-user",
+													message: "Too many daily create user requests",
+													param: "limiterDailyCreateUser",
+													value: limiterResultDaily,
+												},
+											],
+										};
+								}
+							},
+						}
+					)
+					.post(
+						"/user-log-in",
+						async ({ body: { email, password }, jwt }) => {
+							const user = await MyTunesUserModel.findOne({ email }).exec();
+
+							if (user) {
+								const correctPass = await Bun.password.verify(password, user.password);
+								const { id, firstName, lastName, email, phoneNumber, picture } = user;
+
+								if (correctPass) {
+									return {
+										code: "2201x006",
+										message: "User logged in",
+										data: {
+											user: { id, firstName, lastName, email, phoneNumber, picture },
+											token: await jwt.sign({
+												id,
+												firstName,
+												lastName,
+												email,
+											}),
+										},
+									};
+								} else
+									return {
+										code: "4201x007",
+										message: "User password was incorrect",
+									};
+							} else if (!user)
+								return {
+									code: "4301x008",
+									message: "User with this email does not exist",
+								};
+						},
+						{
+							body: t.Object({
+								email: t.String({ format: "email", error: "Email does not have a correct format" }),
+								password: t.String({
+									minLength: 8,
+									maxLength: 64,
+									// pattern: "/(?=.*d)(?=.*[a-z])([^s]){8,64}/g",
+									error: "Password does not have correct format",
+								}), // ? at least one letter, one digit and with a minimum length of 8 characters and a maximum length of 64 characters
+							}),
+							async beforeHandle({ ip, set }) {
+								const limiterConsecutiveLogIn = new RateLimiterMongo({
+									storeClient: connection,
+									points: 5,
+									duration: 300, // ? 5 mins in seconds
+									blockDuration: 300, // ? 5 mins in seconds
+									tableName: "log-in-consecutive-limiter",
+								});
+
+								const limiterDailyLogIn = new RateLimiterMongo({
+									storeClient: connection,
+									points: 15,
+									duration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? remaining time for today in seconds
+									blockDuration: (new Date().setHours(23, 59, 59, 999) - Date.now()) / 1000, // ? block ip for today
+									tableName: "log-in-daily-limiter",
+								});
+
+								const limiterResultConsecutive = await limiterConsecutiveLogIn.consume(ip, 1);
+								const limiterResultDaily = await limiterDailyLogIn.consume(ip, 1);
+
+								if (limiterResultConsecutive.remainingPoints == 0 || limiterResultDaily.remainingPoints == 0) {
+									set.status = "Too Many Requests";
+
+									if (limiterResultConsecutive.remainingPoints == 0)
+										return {
+											code: "4201x009",
+											message: "Too many consecutive log in requests",
+											errors: [
+												{
+													location: "/create-user",
+													message: "Too many consecutive log in requests",
+													param: "limiterConsecutiveLogIn",
+													value: limiterResultConsecutive,
+												},
+											],
+										};
+									else if (limiterResultDaily.remainingPoints == 0)
+										return {
+											code: "4201x010",
+											message: "Too many daily log in requests",
+											errors: [
+												{
+													location: "/create-user",
+													message: "Too many daily log in requests",
+													param: "limiterDailyLogIn",
+													value: limiterResultDaily,
+												},
+											],
+										};
+								}
+							},
+						}
+					)
+			)
+			.guard({
+				headers: t.Object({
+					authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
+				}),
+			})
+			.onBeforeHandle(async ({ bearer, jwt }) => {
+				const tokenData = await jwt.verify(bearer);
+
+				if (!tokenData) throw new Error("Authorization failed. log in again!");
+			})
+			.group("/user", (app) =>
+				app.get("/check-token", async ({ bearer, jwt }) => {
+					const tokenData = await jwt.verify(bearer);
+
+					if (tokenData) {
+						const { id, firstName, lastName, email } = tokenData;
+
+						return {
+							code: "2202x005",
+							message: "User token was valid and new token is sent",
+							data: {
+								user: { firstName, lastName, email },
+								token: await jwt.sign({ id, firstName, lastName, email }),
+							},
+						};
+					} else
+						return {
+							code: "4202x006",
+							message: "User token was not valid or expired",
+							data: { user: null, token: "" },
+						};
+				})
+			)
+			.group("/song", (app) =>
+				app
+					.get("/local-songs", async () => {
 						const songs = await MyTunesSongModel.find({});
 
 						if (songs)
@@ -315,43 +339,6 @@ try {
 								code: "2202x002",
 								message: "Found no local songs for this user",
 								data: [],
-							};
-					})
-					.get("/directories", async () => {
-						const directories = await MyTunesDirectoryModel.find({});
-
-						if (directories)
-							return {
-								code: "2202x003",
-								message: "Found all user directories",
-								data: directories,
-							};
-						else
-							return {
-								code: "2202x004",
-								message: "Found no directory for this user",
-								data: [],
-							};
-					})
-					.get("/check-token", async ({ bearer, jwt }) => {
-						const tokenData = await jwt.verify(bearer);
-
-						if (tokenData) {
-							const { id, firstName, lastName, email } = tokenData;
-
-							return {
-								code: "2202x005",
-								message: "User token was valid and new token is sent",
-								data: {
-									user: { firstName, lastName, email },
-									token: await jwt.sign({ id, firstName, lastName, email }),
-								},
-							};
-						} else
-							return {
-								code: "4202x006",
-								message: "User token was not valid or expired",
-								data: { user: null, token: "" },
 							};
 					})
 					.post(
@@ -380,27 +367,6 @@ try {
 									file: t.String({ error: "File path must be a string" }),
 								})
 							),
-						}
-					)
-					.post(
-						"/local-directory",
-						async ({ body }) => {
-							const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
-
-							if (savedDirectory)
-								return {
-									code: "2202x009",
-									message: "Saved sent local directory for this user",
-									data: savedDirectory,
-								};
-							else
-								return {
-									code: "4302x010",
-									message: "Could not save local directory for this user",
-								};
-						},
-						{
-							body: t.String({ error: "Directory path must be a string" }),
 						}
 					)
 					.patch(
@@ -443,6 +409,46 @@ try {
 						},
 						{
 							body: t.String({ error: "Song id must be a string" }),
+						}
+					)
+			)
+			.group("/directory", (app) =>
+				app
+					.get("/local-directories", async () => {
+						const directories = await MyTunesDirectoryModel.find({});
+
+						if (directories)
+							return {
+								code: "2202x003",
+								message: "Found all user directories",
+								data: directories,
+							};
+						else
+							return {
+								code: "2202x004",
+								message: "Found no directory for this user",
+								data: [],
+							};
+					})
+					.post(
+						"/local-directory",
+						async ({ body }) => {
+							const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
+
+							if (savedDirectory)
+								return {
+									code: "2202x009",
+									message: "Saved sent local directory for this user",
+									data: savedDirectory,
+								};
+							else
+								return {
+									code: "4302x010",
+									message: "Could not save local directory for this user",
+								};
+						},
+						{
+							body: t.String({ error: "Directory path must be a string" }),
 						}
 					)
 			)
