@@ -13,7 +13,6 @@ const muTunesSongSchema = new Schema(
 		favorite: { type: Schema.Types.Boolean, default: false },
 		timesPlayed: { type: Schema.Types.Number, default: 0 },
 		lastTimePlayed: { type: Schema.Types.Date },
-		new: { type: Schema.Types.Boolean, default: true },
 		title: { type: Schema.Types.String, required: true },
 		artist: { type: Schema.Types.String, required: true },
 		coArtists: { type: [Schema.Types.String] },

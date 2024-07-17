@@ -298,10 +298,11 @@ try {
 							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
 						}),
 					})
-					.onBeforeHandle(async ({ bearer, jwt }) => {
+					.derive(async ({ bearer, jwt }) => {
 						const tokenData = await jwt.verify(bearer);
 
 						if (!tokenData) throw new Error("Authorization failed. log in again!");
+						else return { tokenData };
 					})
 					.get("/check-token", async ({ bearer, jwt }) => {
 						const tokenData = await jwt.verify(bearer);
@@ -332,10 +333,11 @@ try {
 							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
 						}),
 					})
-					.onBeforeHandle(async ({ bearer, jwt }) => {
+					.derive(async ({ bearer, jwt }) => {
 						const tokenData = await jwt.verify(bearer);
 
 						if (!tokenData) throw new Error("Authorization failed. log in again!");
+						else return { tokenData };
 					})
 					.get("/local-songs", async () => {
 						const songs = await MyTunesSongModel.find({});
@@ -355,8 +357,16 @@ try {
 					})
 					.post(
 						"/local-songs",
-						async ({ body }) => {
-							const savedMuziks = await MyTunesSongModel.create(body);
+						async ({ body, tokenData }) => {
+							const savedMuziks = await MyTunesSongModel.create(
+								body.map((song) => {
+									Object.assign(song, {
+										user: tokenData.id,
+									});
+
+									return song;
+								})
+							);
 
 							if (savedMuziks)
 								return {
@@ -431,10 +441,11 @@ try {
 							authorization: t.String({ pattern: "\bBearer\b", error: "Authorization header doesn't have required pattern" }),
 						}),
 					})
-					.onBeforeHandle(async ({ bearer, jwt }) => {
+					.derive(async ({ bearer, jwt }) => {
 						const tokenData = await jwt.verify(bearer);
 
 						if (!tokenData) throw new Error("Authorization failed. log in again!");
+						else return { tokenData };
 					})
 					.get("/local-directories", async () => {
 						const directories = await MyTunesDirectoryModel.find({});
@@ -454,8 +465,8 @@ try {
 					})
 					.post(
 						"/local-directory",
-						async ({ body }) => {
-							const savedDirectory = (await MyTunesDirectoryModel.create({ path: body })).toJSON();
+						async ({ body, tokenData }) => {
+							const savedDirectory = (await MyTunesDirectoryModel.create({ user: tokenData.id, path: body })).toJSON();
 
 							if (savedDirectory)
 								return {

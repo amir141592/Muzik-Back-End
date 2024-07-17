@@ -22,7 +22,7 @@ Open http://localhost:3000/ with your browser to see the result.
 
 - remove unused routes ✅️
 - add types for body, params and queries ✅️
-- handle errors locally and globally
-- develope a response type
-- make every validation error a function and return a response with specific error message
-- group all routes ( even general routes )
+- handle errors locally and globally ✅️
+- develope a response type ✅️
+- make every validation error a function and return a response with specific error message ⏭️
+- group all routes ( even general routes ) ✅️
