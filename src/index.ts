@@ -62,7 +62,7 @@ try {
 				}
 			})
 			.onStart(() => console.info(`🦊 Elysia is running at http://localhost:3000`))
-			.onRequest((context) => console.info(context.request.url, context))
+			// .onRequest((context) => console.info(context.request.url, context))
 			.get("/", () => "Hello, How do you do?")
 			.group("/file", (app) =>
 				app
@@ -83,28 +83,28 @@ try {
 						{ params: t.Object({ name: t.String() }) } // { pattern: "/\bw+.(mp4)\b/gm", error: "Only files with mp4 extentions are allowed" }
 					)
 			)
+			.guard({
+				response: t.Union([
+					t.Object({
+						code: t.String(), // { pattern: "^([01234])([0123])d{2}(x)d{3}$" }
+						message: t.String(),
+						data: t.Optional(t.Unknown()),
+						errors: t.Optional(
+							t.Array(
+								t.Object({
+									location: t.String(),
+									param: t.String(),
+									value: t.Unknown(),
+									message: t.String(),
+								})
+							)
+						),
+					}),
+					t.Void(),
+				]),
+			})
 			.group("/public", (app) =>
 				app
-					.guard({
-						// TODO make returning a response optional
-						response: t.MaybeEmpty(
-							t.Object({
-								code: t.String(), // { pattern: "^([01234])([0123])d{2}(x)d{3}$" }
-								message: t.String(),
-								data: t.Optional(t.Unknown()),
-								errors: t.Optional(
-									t.Array(
-										t.Object({
-											location: t.String(),
-											param: t.String(),
-											value: t.Unknown(),
-											message: t.String(),
-										})
-									)
-								),
-							})
-						),
-					})
 					.get("/events", async () => {
 						return {
 							code: "2201x001",
